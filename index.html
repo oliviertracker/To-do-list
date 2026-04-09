@@ -1,1 +1,211 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mon Cerveau Numérique</title>
+    <!-- Bibliothèques pour le calendrier et l'analyse de dates -->
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/2.4.12/chrono.min.js"></script>
+    <style>
+        :root { --primary: #007AFF; --bg: #F2F2F7; --card: #FFFFFF; --success: #34C759; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); margin: 0; padding-bottom: 100px; overflow-x: hidden; }
+        
+        /* Calendrier */
+        #calendar { background: var(--card); padding: 10px; border-radius: 20px; margin: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); height: 350px; }
+        
+        /* Grille des Blocs */
+        .blocks-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 15px; }
+        .block-item { background: var(--card); padding: 25px 10px; border-radius: 20px; text-align: center; cursor: pointer; position: relative; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: transform 0.1s; }
+        .block-item:active { transform: scale(0.95); background: #f9f9f9; }
+        .badge { position: absolute; top: 10px; right: 10px; background: var(--primary); color: white; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold; }
+        .block-icon { font-size: 28px; display: block; margin-bottom: 8px; }
+
+        /* Visionneuse de Dossier (Modal) */
+        #viewer { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 2000; overflow-y: auto; animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .viewer-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; position: sticky; top: 0; background: white; }
+        .file-item { padding: 15px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+        .file-info { display: flex; flex-direction: column; }
+        .file-date { font-size: 12px; color: #888; }
+
+        /* Boutons Flottants (+) */
+        .fab-container { position: fixed; bottom: 30px; right: 20px; display: flex; flex-direction: column-reverse; gap: 15px; z-index: 1000; }
+        .btn-main { width: 65px; height: 65px; border-radius: 50%; background: var(--primary); color: white; border: none; font-size: 35px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 1001; }
+        .sub-btn { width: 55px; height: 55px; border-radius: 50%; background: white; border: 1px solid #ddd; font-size: 24px; display: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .show { display: block; animation: popIn 0.2s ease-out; }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+    <!-- Calendrier -->
+    <div id="calendar"></div>
+
+    <!-- Blocs de Rangement -->
+    <h3 style="margin: 20px 20px 5px;">Mes Dossiers</h3>
+    <div class="blocks-grid">
+        <div class="block-item" onclick="openBlock('Paies')">
+            <span class="block-icon">📄</span><span class="badge" id="count-Paies">0</span>
+            <b>Fiches de Paie</b>
+        </div>
+        <div class="block-item" onclick="openBlock('Banque')">
+            <span class="block-icon">🏦</span><span class="badge" id="count-Banque">0</span>
+            <b>Banque</b>
+        </div>
+        <div class="block-item" onclick="openBlock('Impôts')">
+            <span class="block-icon">⚖️</span><span class="badge" id="count-Impôts">0</span>
+            <b>Impôts</b>
+        </div>
+        <div class="block-item" onclick="openBlock('Factures')">
+            <span class="block-icon">🧾</span><span class="badge" id="count-Factures">0</span>
+            <b>Factures</b>
+        </div>
+    </div>
+
+    <!-- Visionneuse de fichiers (Dossier ouvert) -->
+    <div id="viewer">
+        <div class="viewer-header">
+            <h2 id="viewer-title" style="margin:0;">Dossier</h2>
+            <button onclick="closeViewer()" style="border:none; background:#F2F2F7; padding:10px 15px; border-radius:12px; font-weight:bold;">Fermer</button>
+        </div>
+        <div id="viewer-content"></div>
+        <div style="padding: 25px;">
+            <button onclick="triggerFile()" style="width:100%; padding:18px; background:var(--primary); color:white; border:none; border-radius:15px; font-size:16px; font-weight:bold;">+ Ajouter un document</button>
+        </div>
+    </div>
+
+    <!-- Menu Flottant -->
+    <div class="fab-container">
+        <button class="btn-main" onclick="toggleMenu()">+</button>
+        <button class="sub-btn" id="voiceBtn" onclick="startVoice()">🎙️</button>
+        <button class="sub-btn" onclick="triggerFile('Général')">📎</button>
+    </div>
+    
+    <!-- Input invisible pour déclencher Caméra/Fichiers -->
+    <input type="file" id="globalInput" style="display:none" onchange="saveFile(this)">
+
+    <script>
+        // Base de données locale temporaire
+        let db = { "Paies": [], "Banque": [], "Impôts": [], "Factures": [], "Général": [] };
+        let currentCategory = "";
+        let calendar;
+
+        // Initialisation de la page
+        document.addEventListener('DOMContentLoaded', function() {
+            var calendarEl = document.getElementById('calendar');
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                locale: 'fr',
+                headerToolbar: { left: 'prev', center: 'title', right: 'next' },
+                height: '100%',
+                eventClick: function(info) { 
+                    if(confirm("Tâche accomplie ? Elle sera archivée.")) {
+                        info.event.setProp('backgroundColor', '#8e8e93'); // Couleur "tampon"
+                        alert("Déplacé vers le tampon mémoire.");
+                    }
+                }
+            });
+            calendar.render();
+        });
+
+        // Afficher/Cacher le menu +
+        function toggleMenu() {
+            document.querySelectorAll('.sub-btn').forEach(btn => btn.classList.toggle('show'));
+        }
+
+        // Ouvrir un dossier
+        function openBlock(category) {
+            currentCategory = category;
+            document.getElementById('viewer-title').innerText = category;
+            renderFiles();
+            document.getElementById('viewer').style.display = 'block';
+        }
+
+        function closeViewer() {
+            document.getElementById('viewer').style.display = 'none';
+        }
+
+        // Déclencher l'appareil photo ou les fichiers
+        function triggerFile(category) {
+            if(category) currentCategory = category;
+            document.getElementById('globalInput').click();
+            const btns = document.querySelectorAll('.sub-btn');
+            btns.forEach(btn => btn.classList.remove('show'));
+        }
+
+        // Enregistrer le fichier
+        function saveFile(input) {
+            if (input.files && input.files[0]) {
+                const now = new Date();
+                const fileData = { 
+                    name: input.files[0].name, 
+                    date: now.toLocaleDateString() + ' ' + now.toLocaleTimeString([], {hour: '2h', minute:'2h'})
+                };
+                
+                // Sauvegarde dans le bon dossier
+                db[currentCategory].push(fileData);
+                
+                // Mise à jour du compteur sur le bloc
+                const badge = document.getElementById(`count-${currentCategory}`);
+                if(badge) badge.innerText = db[currentCategory].length;
+                
+                // Rafraîchir la vue du dossier et ajouter au calendrier
+                renderFiles();
+                calendar.addEvent({ 
+                    title: "📎 " + currentCategory + ": " + fileData.name, 
+                    start: new Date(), 
+                    color: '#34C759' 
+                });
+                
+                alert("Document enregistré dans " + currentCategory);
+            }
+        }
+
+        // Afficher la liste des documents du dossier
+        function renderFiles() {
+            const container = document.getElementById('viewer-content');
+            if (db[currentCategory].length === 0) {
+                container.innerHTML = '<div style="text-align:center; margin-top:100px; color:#bbb;"><h3>Dossier vide</h3><p>Appuyez sur le bouton ci-dessous pour ajouter votre premier papier.</p></div>';
+            } else {
+                container.innerHTML = db[currentCategory].map(f => `
+                    <div class="file-item">
+                        <div class="file-info">
+                            <strong>${f.name}</strong>
+                            <span class="file-date">${f.date}</span>
+                        </div>
+                        <span style="font-size:20px;">✅</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // Dictée vocale intelligente
+        function startVoice() {
+            const recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)();
+            recognition.lang = 'fr-FR';
+            
+            recognition.onstart = () => { document.getElementById('voiceBtn').style.background = '#ff3b30'; };
+            
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                const parsedDate = chrono.fr.parseDate(text) || new Date();
+                
+                calendar.addEvent({ 
+                    title: "🎙️ " + text, 
+                    start: parsedDate,
+                    color: '#007AFF'
+                });
+                alert("Événement ajouté : " + text);
+            };
+            
+            recognition.onend = () => { 
+                document.getElementById('voiceBtn').style.background = 'white';
+                toggleMenu();
+            };
+            recognition.start();
+        }
+    </script>
+</body>
+</html>
 
