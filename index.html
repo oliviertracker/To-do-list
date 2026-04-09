@@ -1,1 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mon Cerveau Numérique</title>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/2.4.12/chrono.min.js"></script>
+    <style>
+        :root { --primary: #007AFF; --bg: #F2F2F7; --card: #FFFFFF; }
+        body { font-family: -apple-system, system-ui; background: var(--bg); margin: 0; padding-bottom: 100px; }
+        
+        /* Calendrier et Blocs */
+        #calendar { background: white; padding: 10px; border-radius: 20px; margin: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .blocks-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 15px; }
+        .block-item { background: var(--card); padding: 25px 15px; border-radius: 20px; text-align: center; cursor: pointer; position: relative; }
+        .badge { position: absolute; top: 10px; right: 10px; background: var(--primary); color: white; border-radius: 10px; padding: 2px 8px; font-size: 10px; }
+        
+        /* Fenêtre de consultation (Modal) */
+        #viewer { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 2000; overflow-y: auto; }
+        .viewer-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; position: sticky; top: 0; background: white; }
+        .file-item { padding: 15px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: space-between; }
+
+        /* Menu Action */
+        .fab-container { position: fixed; bottom: 30px; right: 20px; display: flex; flex-direction: column-reverse; gap: 15px; z-index: 1000; }
+        .btn-main { width: 65px; height: 65px; border-radius: 50%; background: var(--primary); color: white; border: none; font-size: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .sub-btn { width: 55px; height: 55px; border-radius: 50%; background: white; border: 1px solid #ddd; font-size: 24px; display: none; }
+        .show { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="calendar"></div>
+
+    <div class="blocks-grid">
+        <div class="block-item" onclick="openBlock('Paies')"><span>📄</span><span class="badge" id="count-Paies">0</span><br><b>Paies</b></div>
+        <div class="block-item" onclick="openBlock('Banque')"><span>🏦</span><span class="badge" id="count-Banque">0</span><br><b>Banque</b></div>
+        <div class="block-item" onclick="openBlock('Impôts')"><span>⚖️</span><span class="badge" id="count-Impôts">0</span><br><b>Impôts</b></div>
+        <div class="block-item" onclick="openBlock('Factures')"><span>🧾</span><span class="badge" id="count-Factures">0</span><br><b>Factures</b></div>
+    </div>
+
+    <div id="viewer">
+        <div class="viewer-header">
+            <h2 id="viewer-title">Dossier</h2>
+            <button onclick="closeViewer()" style="border:none; background: #eee; padding: 10px 15px; border-radius: 10px;">Fermer</button>
+        </div>
+        <div id="viewer-content"></div>
+        <div style="padding: 20px;">
+            <button onclick="triggerFile()" style="width:100%; padding:15px; background:var(--primary); color:white; border:none; border-radius:15px;">+ Ajouter un document</button>
+        </div>
+    </div>
+
+    <div class="fab-container">
+        <button class="btn-main" onclick="toggleMenu()">+</button>
+        <button class="sub-btn" id="voiceBtn" onclick="startVoice()">🎙️</button>
+        <button class="sub-btn" onclick="triggerFile('Général')">📎</button>
+    </div>
+    
+    <input type="file" id="globalInput" style="display:none" onchange="saveFile(this)">
+
+    <script>
+        let db = { "Paies": [], "Banque": [], "Impôts": [], "Factures": [], "Général": [] };
+        let currentCategory = "";
+        let calendar;
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', function() {
+            calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+                initialView: 'dayGridMonth', locale: 'fr', height: 350,
+                eventClick: function(info) { 
+                    if(confirm("Tâche terminée ? Elle ira dans le tampon.")) {
+                        info.event.remove();
+                        // Ici on pourrait ajouter la logique du tampon mémoire
+                    }
+                }
+            });
+            calendar.render();
+        });
+
+        function toggleMenu() {
+            document.querySelectorAll('.sub-btn').forEach(btn => btn.classList.toggle('show'));
+        }
+
+        // Ouvrir un bloc (Dossier)
+        function openBlock(category) {
+            currentCategory = category;
+            document.getElementById('viewer-title').innerText = category;
+            renderFiles();
+            document.getElementById('viewer').style.display = 'block';
+        }
+
+        function closeViewer() { document.getElementById('viewer').style.display = 'none'; }
+
+        function triggerFile() { document.getElementById('globalInput').click(); }
+
+        function saveFile(input) {
+            if (input.files && input.files[0]) {
+                const fileData = { name: input.files[0].name, date: new Date().toLocaleDateString() };
+                db[currentCategory].push(fileData);
+                document.getElementById(`count-${currentCategory}`).innerText = db[currentCategory].length;
+                renderFiles();
+                calendar.addEvent({ title: "📎 " + currentCategory, start: new Date(), color: 'green' });
+            }
+        }
+
+        function renderFiles() {
+            const container = document.getElementById('viewer-content');
+            container.innerHTML = db[currentCategory].length === 0 ? 
+                '<p style="text-align:center; color:#999; margin-top:50px;">Aucun document ici.</p>' : 
+                db[currentCategory].map(f => `<div class="file-item"><span>${f.name}</span><small>${f.date}</small></div>`).join('');
+        }
+
+        function startVoice() {
+            const recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)();
+            recognition.lang = 'fr-FR';
+            recognition.onresult = (e) => {
+                const text = e.results[0][0].transcript;
+                calendar.addEvent({ title: text, start: chrono.fr.parseDate(text) || new Date() });
+            };
+            recognition.start();
+        }
+    </script>
+</body>
+</html>
 
