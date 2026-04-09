@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mon Cerveau Numérique</title>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/2.4.12/chrono.min.js"></script>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --bg: #F2F2F7;
+            --card: #FFFFFF;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 0; }
+        
+        /* Menu Action Rapide */
+        .fab-container { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column-reverse; gap: 10px; z-index: 1000; }
+        .btn-main { width: 60px; height: 60px; border-radius: 30px; background: var(--primary); color: white; border: none; font-size: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        .sub-btn { width: 50px; height: 50px; border-radius: 25px; background: white; border: 1px solid #ddd; font-size: 20px; display: none; }
+        
+        /* Blocs de Rangement */
+        .blocks-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 15px; }
+        .block-item { background: var(--card); padding: 20px; border-radius: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .block-item i { font-size: 24px; display: block; margin-bottom: 10px; }
+
+        /* Calendrier */
+        #calendar { background: white; padding: 10px; border-radius: 15px; margin: 15px; height: 400px; }
+        
+        /* Zone Tampon (Masquée par défaut) */
+        #buffer-zone { padding: 15px; background: #e5e5ea; min-height: 100px; margin: 15px; border-radius: 15px; border: 2px dashed #ccc; }
+    </style>
+</head>
+<body>
+
+    <div id="calendar"></div>
+
+    <h3 style="margin: 20px 15px 5px;">Mes Blocs de Rangement</h3>
+    <div class="blocks-grid">
+        <div class="block-item"><span>📄</span>Paies</div>
+        <div class="block-item"><span>🏦</span>Banque</div>
+        <div class="block-item"><span>⚖️</span>Impôts</div>
+        <div class="block-item"><span>🧾</span>Factures</div>
+    </div>
+
+    <h3 style="margin: 20px 15px 5px;">Tampon (Terminé)</h3>
+    <div id="buffer-zone">Les tâches cochées arrivent ici...</div>
+
+    <div class="fab-container">
+        <button class="btn-main" onclick="toggleMenu()">+</button>
+        <button class="sub-btn" id="voiceBtn" onclick="startVoice()">🎙️</button>
+        <button class="sub-btn" id="fileBtn" onclick="document.getElementById('fileInput').click()">📎</button>
+    </div>
+    
+    <input type="file" id="fileInput" style="display:none" onchange="handleFile(this.files)">
+
+    <script>
+        // Initialisation du Calendrier
+        let calendar;
+        document.addEventListener('DOMContentLoaded', function() {
+            var calendarEl = document.getElementById('calendar');
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: { left: 'prev,next', center: 'title', right: '' },
+                locale: 'fr',
+                events: []
+            });
+            calendar.render();
+        });
+
+        function toggleMenu() {
+            const btns = document.querySelectorAll('.sub-btn');
+            btns.forEach(btn => btn.style.display = btn.style.display === 'block' ? 'none' : 'block');
+        }
+
+        // Dictée Vocale avec Analyse de Date
+        function startVoice() {
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'fr-FR';
+            
+            recognition.onstart = () => { document.getElementById('voiceBtn').style.background = '#ff3b30'; };
+            
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                // Analyse du texte pour extraire la date (ex: "le 28 mai")
+                const parsedDate = chrono.fr.parseDate(text);
+                const finalDate = parsedDate || new Date();
+                
+                calendar.addEvent({
+                    title: text,
+                    start: finalDate,
+                    allDay: false
+                });
+                alert("Ajouté au calendrier : " + text);
+            };
+            
+            recognition.onend = () => { document.getElementById('voiceBtn').style.background = 'white'; };
+            recognition.start();
+        }
+
+        // Gestion des fichiers (Photos/PDF)
+        function handleFile(files) {
+            if (files.length > 0) {
+                const fileName = files[0].name;
+                alert("Fichier détecté : " + fileName + ". Choisissez un bloc de rangement.");
+            }
+        }
+    </script>
+</body>
+</html>
